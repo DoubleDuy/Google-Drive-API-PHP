@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive API Tester</title>
+    
+    <link rel="stylesheet" href="css/api_tester.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Google Drive API Tester</h1>
+            <p>Test all Google Drive API functions interactively</p>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="section">
+                    <h3>📋 File Operations</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="listFiles()">List Files</button>
+                        <button class="btn btn-info" onclick="getFileInfo()">Get File Info</button>
+                        <button class="btn btn-warning" onclick="downloadFile()">Download File</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>✏️ Create & Upload</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-success" onclick="showCreateFileForm()">Create Text File</button>
+                        <button class="btn btn-success" onclick="showCreateFolderForm()">Create Folder</button>
+                        <button class="btn btn-success" onclick="showUploadForm()">Upload File</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>🔄 Modify & Copy</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-warning" onclick="showUpdateForm()">Update File</button>
+                        <button class="btn btn-info" onclick="showCopyForm()">Copy File</button>
+                        <button class="btn btn-danger" onclick="deleteFile()">Delete File</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>🔧 Settings</h3>
+                    <div class="form-group">
+                        <label for="accessToken">Access Token:</label>
+                        <input type="password" id="accessToken" placeholder="Enter your Google access token">
+                    </div>
+                    <div class="form-group">
+                        <label for="selectedFileId">Selected File ID:</label>
+                        <input type="text" id="selectedFileId" placeholder="File ID will appear here">
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <div id="dynamicForm"></div>
+                
+                <div class="section">
+                    <h3>📤 Response</h3>
+                    <div class="loading" id="loading">Loading...</div>
+                    <div class="response-area" id="response">Click any button to test the API functions...</div>
+                </div>
+
+                <div class="section" id="fileListSection" style="display: none;">
+                    <h3>📁 Files</h3>
+                    <div class="file-list" id="fileList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'api.php';
+        let currentFiles = [];
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('response').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('response').style.display = 'block';
+        }
+
+        function showResponse(data, isError = false) {
+            hideLoading();
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = JSON.stringify(data, null, 2);
+            
+            // Show alert
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${isError ? 'alert-error' : 'alert-success'}`;
+            alertDiv.textContent = isError ? 'Error occurred!' : 'Operation completed successfully!';
+            
+            const existingAlert = document.querySelector('.alert');
+            if (existingAlert) existingAlert.remove();
+            
+            responseDiv.parentNode.insertBefore(alertDiv, responseDiv);
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+
+        function getAccessToken() {
+            const token = document.getElementById('accessToken').value.trim();
+            if (!token) {
+                alert('Please enter your access token first!');
+                return null;
+            }
+            return token;
+        }
+
+        async function makeAPIRequest(endpoint, options = {}) {
+            const token = getAccessToken();
+            if (!token) return;
+
+            showLoading();
+            
+            try {
+                const url = `${API_BASE}?access_token=${encodeURIComponent(token)}&${endpoint}`;
+                const response = await fetch(url, options);
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResponse(data);
+                    return data;
+                } else {
+                    showResponse(data, true);
+                    return null;
+                }
+            } catch (error) {
+                showResponse({ error: error.message }, true);
+                return null;
+            }
+        }
+
+        async function listFiles() {
+            const data = await makeAPIRequest('path=files&pageSize=20');
+            if (data && data.data.files) {
+                currentFiles = data.data.files;
+                displayFileList();
+            }
+        }
+
+        function displayFileList() {
+            const fileListDiv = document.getElementById('fileList');
+            const fileListSection = document.getElementById('fileListSection');
+            
+            fileListDiv.innerHTML = '';
+            
+            currentFiles.forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.onclick = () => selectFile(file.id, file.name);
+                
+                fileItem.innerHTML = `
+                    <div class="file-name">${file.name}</div>
+                    <div class="file-id">${file.id}</div>
+                `;
+                
+                fileListDiv.appendChild(fileItem);
+            });
+            
+            fileListSection.style.display = 'block';
+        }
+
+        function selectFile(fileId, fileName) {
+            document.getElementById('selectedFileId').value = fileId;
+            showResponse({ message: `Selected file: ${fileName}`, fileId: fileId });
+        }
+
+        async function getFileInfo() {
+            const fileId = document.getElementById('selectedFileId').value.trim();
+            if (!fileId) {
+                alert('Please select a file first!');
+                return;
+            }
+            await makeAPIRequest(`path=file&id=${encodeURIComponent(fileId)}`);
+        }
+
+        async function downloadFile() {
+            const fileId = document.getElementById('selectedFileId').value.trim();
+            if (!fileId) {
+                alert('Please select a file first!');
+                return;
+            }
+            
+            const token = getAccessToken();
+            if (!token) return;
+            
+            const url = `${API_BASE}?access_token=${encodeURIComponent(token)}&path=download&id=${encodeURIComponent(fileId)}`;
+            window.open(url, '_blank');
+        }
+
+        function showCreateFileForm() {
+            const form = `
+                <div class="section">
+                    <h3>✏️ Create Text File</h3>
+                    <div class="form-group">
+                        <label>File Name:</label>
+                        <input type="text" id="createFileName" placeholder="example.txt">
+                    </div>
+                    <div class="form-group">
+                        <label>Content:</label>
+                        <textarea id="createFileContent" rows="5" placeholder="File content..."></textarea>
+                    </div>
+                    <button class="btn btn-success" onclick="createFile()">Create File</button>
+                </div>
+            `;
+            document.getElementById('dynamicForm').innerHTML = form;
+        }
+
+        async function createFile() {
+            const fileName = document.getElementById('createFileName').value.trim();
+            const content = document.getElementById('createFileContent').value;
+            
+            if (!fileName) {
+                alert('Please enter a file name!');
+                return;
+            }
+            
+            const requestBody = {
+                metadata: { name: fileName },
+                content: content,
+                mimeType: 'text/plain'
+            };
+            
+            await makeAPIRequest('path=file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+        }
+
+        function showCreateFolderForm() {
+            const form = `
+                <div class="section">
+                    <h3>📁 Create Folder</h3>
+                    <div class="form-group">
+                        <label>Folder Name:</label>
+                        <input type="text" id="createFolderName" placeholder="My Folder">
+                    </div>
+                    <button class="btn btn-success" onclick="createFolder()">Create Folder</button>
+                </div>
+            `;
+            document.getElementById('dynamicForm').innerHTML = form;
+        }
+
+        async function createFolder() {
+            const folderName = document.getElementById('createFolderName').value.trim();
+            
+            if (!folderName) {
+                alert('Please enter a folder name!');
+                return;
+            }
+            
+            const requestBody = { name: folderName };
+            
+            await makeAPIRequest('path=folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+        }
+
+        function showUploadForm() {
+            const form = `
+                <div class="section">
+                    <h3>📤 Upload File</h3>
+                    <div class="form-group">
+                        <label>Choose File:</label>
+                        <input type="file" id="uploadFile">
+                    </div>
+                    <div class="form-group">
+                        <label>Custom Name (optional):</label>
+                        <input type="text" id="uploadCustomName" placeholder="Leave empty to use original name">
+                    </div>
+                    <button class="btn btn-success" onclick="uploadFile()">Upload File</button>
+                </div>
+            `;
+            document.getElementById('dynamicForm').innerHTML = form;
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('uploadFile');
+            const customName = document.getElementById('uploadCustomName').value.trim();
+            
+            if (!fileInput.files[0]) {
+                alert('Please select a file!');
+                return;
+            }
+            
+            const token = getAccessToken();
+            if (!token) return;
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            if (customName) formData.append('name', customName);
+            
+            showLoading();
+            
+            try {
+                const url = `${API_BASE}?access_token=${encodeURIComponent(token)}&path=upload`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResponse(data);
+                } else {
+                    showResponse(data, true);
+                }
+            } catch (error) {
+                showResponse({ error: error.message }, true);
+            }
+        }
+
+        function showUpdateForm() {
+            const form = `
+                <div class="section">
+                    <h3>✏️ Update File</h3>
+                    <div class="form-group">
+                        <label>New Name:</label>
+                        <input type="text" id="updateFileName" placeholder="New file name">
+                    </div>
+                    <div class="form-group">
+                        <label>New Content:</label>
+                        <textarea id="updateFileContent" rows="5" placeholder="New content..."></textarea>
+                    </div>
+                    <button class="btn btn-warning" onclick="updateFile()">Update File</button>
+                </div>
+            `;
+            document.getElementById('dynamicForm').innerHTML = form;
+        }
+
+        async function updateFile() {
+            const fileId = document.getElementById('selectedFileId').value.trim();
+            if (!fileId) {
+                alert('Please select a file first!');
+                return;
+            }
+            
+            const newName = document.getElementById('updateFileName').value.trim();
+            const newContent = document.getElementById('updateFileContent').value;
+            
+            const requestBody = {};
+            if (newName) requestBody.metadata = { name: newName };
+            if (newContent) {
+                requestBody.content = newContent;
+                requestBody.mimeType = 'text/plain';
+            }
+            
+            if (!newName && !newContent) {
+                alert('Please provide either new name or new content!');
+                return;
+            }
+            
+            await makeAPIRequest(`path=file&id=${encodeURIComponent(fileId)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+        }
+
+        function showCopyForm() {
+            const form = `
+                <div class="section">
+                    <h3>📋 Copy File</h3>
+                    <div class="form-group">
+                        <label>New Name:</label>
+                        <input type="text" id="copyFileName" placeholder="Copy of original file">
+                    </div>
+                    <button class="btn btn-info" onclick="copyFile()">Copy File</button>
+                </div>
+            `;
+            document.getElementById('dynamicForm').innerHTML = form;
+        }
+
+        async function copyFile() {
+            const fileId = document.getElementById('selectedFileId').value.trim();
+            if (!fileId) {
+                alert('Please select a file first!');
+                return;
+            }
+            
+            const newName = document.getElementById('copyFileName').value.trim();
+            if (!newName) {
+                alert('Please enter a name for the copied file!');
+                return;
+            }
+            
+            const requestBody = {
+                fileId: fileId,
+                metadata: { name: newName }
+            };
+            
+            await makeAPIRequest('path=copy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+        }
+
+        async function deleteFile() {
+            const fileId = document.getElementById('selectedFileId').value.trim();
+            if (!fileId) {
+                alert('Please select a file first!');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+                return;
+            }
+            
+            await makeAPIRequest(`path=file&id=${encodeURIComponent(fileId)}`, {
+                method: 'DELETE'
+            });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Auto-load files if token is available
+            const token = localStorage.getItem('googleAccessToken');
+            if (token) {
+                document.getElementById('accessToken').value = token;
+            }
+            
+            // Save token to localStorage when changed
+            document.getElementById('accessToken').addEventListener('change', function() {
+                localStorage.setItem('googleAccessToken', this.value);
+            });
+        });
+    </script>
+</body>
+</html>
